@@ -5,7 +5,7 @@ import posixpath
 import re
 import struct
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from zipfile import BadZipFile, ZipFile
 from xml.etree import ElementTree as ET
@@ -22,13 +22,36 @@ NS = {
 RID = f"{{{NS['r']}}}id"
 EMBED = f"{{{NS['r']}}}embed"
 CELL_REF = re.compile(r"^\$?([A-Z]+)\$?(\d+)$")
+DEFAULT_MAX_INPUT_BYTES = 512 * 1024 * 1024
+DEFAULT_MAX_PART_BYTES = 64 * 1024 * 1024
+DEFAULT_MAX_MEDIA_BYTES = 256 * 1024 * 1024
+DEFAULT_MAX_TOTAL_UNCOMPRESSED = 2 * 1024 * 1024 * 1024
+DEFAULT_MAX_ZIP_ENTRIES = 100_000
+DEFAULT_MAX_COMPRESSION_RATIO = 1000.0
+DEFAULT_MAX_CELLS = 2_000_000
+DEFAULT_MAX_CONTEXT_RADIUS = 100
+
+
+def _read_part(zf: ZipFile, part: str, max_bytes: int | None = None) -> bytes:
+    limit = max_bytes if max_bytes is not None else getattr(zf, "_scene_max_part_bytes")
+    try:
+        info = zf.getinfo(part)
+    except KeyError as exc:
+        raise ValueError(f"Missing OOXML part: {part}") from exc
+    if info.file_size > limit:
+        raise ValueError(f"OOXML part exceeds byte limit ({limit}): {part}")
+    data = zf.read(info)
+    if len(data) != info.file_size:
+        raise ValueError(f"OOXML part size mismatch: {part}")
+    return data
 
 
 def _xml(zf: ZipFile, part: str) -> ET.Element:
     try:
-        return ET.fromstring(zf.read(part))
-    except KeyError as exc:
-        raise ValueError(f"Missing OOXML part: {part}") from exc
+        data = _read_part(zf, part)
+        if re.search(br"<!\s*(?:DOCTYPE|ENTITY)\b", data, re.IGNORECASE):
+            raise ValueError(f"DTD/entity declarations are not allowed in OOXML XML: {part}")
+        return ET.fromstring(data)
     except ET.ParseError as exc:
         raise ValueError(f"Malformed XML part: {part}: {exc}") from exc
 
@@ -164,6 +187,8 @@ def _cell_value(cell: ET.Element, shared: list[str]) -> Any:
         return raw
     if cell_type == "b":
         return raw == "1"
+    if re.fullmatch(r"[+-]?\d+", raw):
+        return int(raw)
     try:
         number = float(raw)
         return int(number) if number.is_integer() else number
@@ -179,11 +204,16 @@ def _parse_sheet_cells(root: ET.Element, shared: list[str], styles: dict[int, di
         if not ref:
             continue
         formula_node = cell.find("m:f", NS)
+        value_node = cell.find("m:v", NS)
         style_id = int(cell.attrib.get("s", 0))
+        value = _cell_value(cell, shared)
         item = {
             "ref": ref,
-            "value": _cell_value(cell, shared),
+            "value": value,
+            "raw_value": value_node.text if value_node is not None else None,
             "formula": formula_node.text if formula_node is not None else None,
+            "formula_attributes": dict(formula_node.attrib) if formula_node is not None else None,
+            "cached_value": value if formula_node is not None else None,
             "type": cell.attrib.get("t", "n"),
             "style_id": style_id,
             "number_format": styles.get(style_id),
@@ -282,7 +312,9 @@ def _parse_drawing(zf: ZipFile, part: str, by_ref: dict[str, dict], merges: list
                     "description": props.attrib.get("descr") if props is not None else None,
                     "relationship_id": blip.attrib.get(EMBED) if blip is not None else None}
             if media_part and media_part in zf.namelist():
-                item["media"] = _image_info(zf.read(media_part), media_part)
+                item["media"] = _image_info(
+                    _read_part(zf, media_part, getattr(zf, "_scene_max_media_bytes")), media_part
+                )
             else:
                 item["media"] = {"part": media_part, "missing": True}
             objects.append(item)
@@ -309,18 +341,62 @@ def parse_workbook(
     extract_media: str | Path | None = None,
     context_radius: int = 2,
     redact_paths: bool = False,
+    max_input_bytes: int = DEFAULT_MAX_INPUT_BYTES,
+    max_part_bytes: int = DEFAULT_MAX_PART_BYTES,
+    max_media_bytes: int = DEFAULT_MAX_MEDIA_BYTES,
+    max_total_uncompressed: int = DEFAULT_MAX_TOTAL_UNCOMPRESSED,
+    max_zip_entries: int = DEFAULT_MAX_ZIP_ENTRIES,
+    max_compression_ratio: float = DEFAULT_MAX_COMPRESSION_RATIO,
+    max_cells: int = DEFAULT_MAX_CELLS,
+    max_context_radius: int = DEFAULT_MAX_CONTEXT_RADIUS,
 ) -> dict[str, Any]:
     source = Path(path)
     if source.suffix.lower() not in {".xlsx", ".xlsm", ".xltx", ".xltm"}:
         raise ValueError("Expected an OOXML workbook (.xlsx, .xlsm, .xltx, or .xltm)")
-    data = source.read_bytes()
+    limits = (max_input_bytes, max_part_bytes, max_media_bytes, max_total_uncompressed,
+              max_zip_entries, max_compression_ratio, max_cells, max_context_radius)
+    if any(value <= 0 for value in limits):
+        raise ValueError("All parser resource limits must be positive")
+    if context_radius < 0 or context_radius > max_context_radius:
+        raise ValueError(f"context_radius must be between 0 and {max_context_radius}")
+    source_size = source.stat().st_size
+    if source_size > max_input_bytes:
+        raise ValueError(f"Workbook exceeds max_input_bytes ({max_input_bytes})")
+    source_hash = hashlib.sha256()
+    with source.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            source_hash.update(chunk)
     try:
         zf = ZipFile(source)
     except BadZipFile as exc:
         raise ValueError("Input is not a valid OOXML ZIP package") from exc
 
     with zf:
-        names = set(zf.namelist())
+        infos = zf.infolist()
+        if len(infos) > max_zip_entries:
+            raise ValueError(f"OOXML package exceeds max_zip_entries ({max_zip_entries})")
+        raw_names = [info.filename for info in infos]
+        if len(raw_names) != len(set(raw_names)):
+            raise ValueError("OOXML package contains duplicate ZIP entry names")
+        total_uncompressed = sum(info.file_size for info in infos)
+        if total_uncompressed > max_total_uncompressed:
+            raise ValueError(
+                f"OOXML package exceeds max_total_uncompressed ({max_total_uncompressed})"
+            )
+        for info in infos:
+            member = PurePosixPath(info.filename)
+            if (member.is_absolute() or ".." in member.parts or "\\" in info.filename
+                    or "\x00" in info.filename):
+                raise ValueError(f"Unsafe ZIP entry name: {info.filename!r}")
+            if info.flag_bits & 0x1:
+                raise ValueError(f"Encrypted ZIP entry is unsupported: {info.filename}")
+            if info.file_size and (not info.compress_size or info.file_size / info.compress_size > max_compression_ratio):
+                raise ValueError(
+                    f"Suspicious compression ratio above {max_compression_ratio:g}: {info.filename}"
+                )
+        zf._scene_max_part_bytes = max_part_bytes
+        zf._scene_max_media_bytes = max_media_bytes
+        names = set(raw_names)
         if "xl/workbook.xml" not in names:
             raise ValueError("OOXML package does not contain xl/workbook.xml")
         shared = _shared_strings(zf)
@@ -330,6 +406,7 @@ def parse_workbook(
         sheets = []
         all_media = {}
         warnings = []
+        total_cells = 0
 
         for sheet_node in workbook.findall("m:sheets/m:sheet", NS):
             rel_id = sheet_node.attrib.get(RID)
@@ -340,6 +417,9 @@ def parse_workbook(
                 continue
             root = _xml(zf, sheet_part)
             cells, by_ref = _parse_sheet_cells(root, shared, styles)
+            total_cells += len(cells)
+            if total_cells > max_cells:
+                raise ValueError(f"Workbook exceeds max_cells ({max_cells})")
             merges = [node.attrib.get("ref", "") for node in root.findall("m:mergeCells/m:mergeCell", NS) if node.attrib.get("ref")]
             sheet_rels = _relationships(zf, sheet_part)
             drawing_objects = []
@@ -360,7 +440,7 @@ def parse_workbook(
             columns = [{"min": int(col.attrib.get("min", 0)), "max": int(col.attrib.get("max", 0)),
                         "width": float(col.attrib["width"]) if "width" in col.attrib else None,
                         "hidden": col.attrib.get("hidden") == "1"} for col in root.findall("m:cols/m:col", NS)]
-            image_formulas = [c["ref"] for c in cells if c["formula"] and c["formula"].lstrip().upper().startswith(("IMAGE(", "_XLFN.IMAGE("))]
+            image_formulas = [c["ref"] for c in cells if c["formula"] and c["formula"].lstrip(" =").upper().startswith(("IMAGE(", "_XLFN.IMAGE("))]
             sheets.append({
                 "name": sheet_node.attrib.get("name"),
                 "state": sheet_node.attrib.get("state", "visible"),
@@ -375,12 +455,17 @@ def parse_workbook(
             })
 
         if extract_media:
-            destination = Path(extract_media)
+            destination = Path(extract_media).resolve()
             destination.mkdir(parents=True, exist_ok=True)
             for part, media in all_media.items():
                 filename = f"{media['sha256'][:12]}-{Path(part).name}"
-                (destination / filename).write_bytes(zf.read(part))
                 extracted = destination / filename
+                try:
+                    extracted.resolve().relative_to(destination)
+                except ValueError as exc:
+                    raise ValueError(f"Unsafe extracted media path: {extracted}") from exc
+                with extracted.open("xb") as stream:
+                    stream.write(_read_part(zf, part, max_media_bytes))
                 media["extracted_path"] = extracted.name if redact_paths else str(extracted.resolve())
 
         object_counts = {"image": 0, "chart": 0, "shape": 0, "unsupported-drawing-object": 0}
@@ -391,16 +476,19 @@ def parse_workbook(
             "rich_data": sorted(n for n in names if n.startswith("xl/richData/")),
             "external_links": sorted(n for n in names if n.startswith("xl/externalLinks/") and n.endswith(".xml")),
             "vml_drawings": sorted(n for n in names if n.startswith("xl/drawings/") and n.endswith(".vml")),
+            "comments": sorted(n for n in names if n.startswith("xl/comments") and n.endswith(".xml")),
+            "macros": sorted(n for n in names if n.endswith("vbaProject.bin")),
+            "custom_xml": sorted(n for n in names if n.startswith("customXml/")),
         }
         return {
-            "schema_version": "1.0",
-            "parser_version": "0.2.0",
+            "schema_version": "1.1",
+            "parser_version": "0.3.0",
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "source": {
                 "path": source.name if redact_paths else str(source.resolve()),
                 "path_redacted": redact_paths,
-                "bytes": len(data),
-                "sha256": hashlib.sha256(data).hexdigest(),
+                "bytes": source_size,
+                "sha256": source_hash.hexdigest(),
             },
             "summary": {
                 "sheets": len(sheets),
@@ -414,5 +502,15 @@ def parse_workbook(
             "sheets": sheets,
             "media": list(all_media.values()),
             "unsupported_or_separate_parts": unsupported_parts,
+            "resource_limits": {
+                "max_input_bytes": max_input_bytes,
+                "max_part_bytes": max_part_bytes,
+                "max_media_bytes": max_media_bytes,
+                "max_total_uncompressed": max_total_uncompressed,
+                "max_zip_entries": max_zip_entries,
+                "max_compression_ratio": max_compression_ratio,
+                "max_cells": max_cells,
+                "max_context_radius": max_context_radius,
+            },
             "warnings": warnings,
         }

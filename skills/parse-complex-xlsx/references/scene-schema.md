@@ -4,7 +4,7 @@
 
 | Field | Meaning |
 |---|---|
-| `schema_version` | Contract version for downstream consumers |
+| `schema_version` | Contract version for downstream consumers (currently `1.1`) |
 | `parser_version` | Parser implementation version |
 | `source` | Source path or redacted filename, redaction flag, byte size, and SHA-256 |
 | `summary` | Counts of sheets, cells, merges, objects, and media |
@@ -18,7 +18,7 @@
 Each sheet contains:
 
 - `name`, `state`, `part`, and used `dimension`;
-- typed `cells` with formula and style metadata;
+- typed `cells` with `value`, exact XML `raw_value`, formula text/attributes, explicitly labeled `cached_value`, and style metadata;
 - `merged_ranges`;
 - row and column sizes/hidden flags;
 - `drawing_objects`;
@@ -58,3 +58,5 @@ source.sha256 + sheet.name + drawing_object.id + media.sha256
 This prevents collisions across workbook revisions and repeated filenames.
 
 Use `--redact-paths` when Scene JSON may be shared. It stores only filenames in `source.path` and media `extracted_path`; hashes and evidence joins remain unchanged.
+
+`cached_value` is extracted evidence, not a recalculation result. Keep `raw_value` when decimal precision matters and do not claim a cached value is current without a separately identified recalculation engine.
