@@ -1,0 +1,4 @@
+interface:
+  display_name: "Parse Complex XLSX"
+  short_description: "Parse merged cells, images, and drawings"
+  default_prompt: "Use $parse-complex-xlsx to inspect this workbook and produce an evidence-linked scene model."
