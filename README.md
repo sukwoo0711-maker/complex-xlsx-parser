@@ -18,25 +18,11 @@ It extracts:
 python -m complex_xlsx_parser spec.xlsx --pretty -o scene.json --extract-media extracted-media --redact-paths
 ```
 
-The parser performs no OCR and calls no remote service. OCR and multimodal interpretation belong in downstream adapters so sensitive workbooks can remain local.
+The parser performs no OCR and makes no network calls. Optional OCR and image interpretation must use an offline local backend; the bundled skill instructs the agent to stop rather than use a hosted service.
 
-The bundled skill is backend-neutral. It preserves source language and coordinates, treats translations and normalized values as derived data, records uncertainty and coverage gaps, and includes guidance for right-to-left or vertical text, locale-specific values, accessibility metadata, and consequential-use review. Before sharing Scene JSON, review absolute paths, hidden content, comments, metadata, and nearby-cell context for sensitive information.
+The bundled skill is backend-neutral within an offline boundary. It preserves source language and coordinates, treats translations and normalized values as derived data, records uncertainty and coverage gaps, and includes guidance for right-to-left or vertical text, locale-specific values, accessibility metadata, and consequential-use review. Before sharing Scene JSON, review absolute paths, hidden content, comments, metadata, and nearby-cell context for sensitive information.
 
 Use `--redact-paths` for portable or shared output. Omit it only when protected local tooling requires absolute paths.
-
-## Tests
-
-```shell
-python -m unittest discover -s tests -v
-```
-
-Regression fixtures come from permissively licensed public repositories and are documented in `tests/fixtures/SOURCES.md`.
-
-To refresh them from their pinned upstream URLs and verify SHA-256 hashes:
-
-```shell
-python tests/fetch_fixtures.py
-```
 
 ## Current boundaries
 

@@ -1,4 +1,4 @@
 interface:
   display_name: "Parse Complex XLSX"
   short_description: "Parse complex workbooks with traceable evidence"
-  default_prompt: "Use $parse-complex-xlsx to inspect this workbook and produce a privacy-aware, accessible, evidence-linked scene model while preserving language and uncertainty."
+  default_prompt: "Use $parse-complex-xlsx to inspect this workbook entirely offline and produce a privacy-aware, accessible, evidence-linked scene model while preserving language and uncertainty."

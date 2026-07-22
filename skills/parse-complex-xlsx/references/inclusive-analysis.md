@@ -23,9 +23,9 @@ Use this checklist when language, locale, accessibility, personal data, or conse
 - Use explicit labels in addition to symbols such as color, stars, circles, and warning icons.
 - Ask for or recommend an accessible source when low resolution, handwriting, color contrast, or complex spatial layout prevents reliable extraction.
 
-## Stay backend-neutral
+## Stay backend-neutral and offline
 
-- Select OCR, rules, local models, hosted models, or qualified manual transcription based on evidence needs, authorization, language coverage, accessibility, cost, and reproducibility.
+- Select rules, offline OCR, local models, or qualified manual transcription based on evidence needs, authorization, language coverage, accessibility, cost, and reproducibility.
 - Record backend class, product or project name when known, version, configuration, timestamp, and input hash. Do not imply that one vendor is authoritative.
 - Compare outputs against source evidence. Agreement between multiple systems increases corroboration only when their errors are sufficiently independent.
 - If no suitable backend is available, report `NOT_ANALYZED` and the reason instead of fabricating or silently omitting content.
@@ -41,4 +41,4 @@ Use this checklist when language, locale, accessibility, personal data, or conse
 
 - Include only the cells and media needed for the task.
 - Check whether absolute paths, usernames, document properties, comments, hidden content, external links, and image metadata disclose sensitive information before sharing artifacts.
-- Apply the user's organizational policy, retention rules, consent requirements, and applicable jurisdiction. When these are unknown, keep processing local and disclose the limitation.
+- Apply the user's organizational policy, retention rules, consent requirements, and applicable jurisdiction. Keep processing local; stop if a required operation would use the network.

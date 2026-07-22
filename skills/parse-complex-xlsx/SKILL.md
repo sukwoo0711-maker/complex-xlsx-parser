@@ -1,6 +1,6 @@
 ---
 name: parse-complex-xlsx
-description: Parse structurally or visually complex OOXML workbooks into evidence-linked scene models containing cells, formulas, merged ranges, images, anchors, shapes, charts, and nearby cell context. Use for .xlsx/.xlsm/.xltx/.xltm documents that mix adjacent tables, merged headers, screenshots, diagrams, multilingual text, numeric constraints, charts, or image-based requirements; for accessible and privacy-aware media extraction before OCR or multimodal analysis; and for tracing derived claims back to exact sheets, cells, ranges, and drawing objects without depending on a particular AI provider.
+description: Locally parse structurally or visually complex OOXML workbooks into evidence-linked scene models containing cells, formulas, merged ranges, images, anchors, shapes, charts, and nearby cell context. Use for .xlsx/.xlsm/.xltx/.xltm documents that mix adjacent tables, merged headers, screenshots, diagrams, multilingual text, numeric constraints, charts, or image-based requirements; for offline media extraction before local OCR or image analysis; and for tracing derived claims back to exact sheets, cells, ranges, and drawing objects without network access.
 ---
 
 # Parse Complex XLSX
@@ -22,7 +22,7 @@ Treat a workbook as a two-dimensional document scene, not a flat table. Preserve
 5. Read [inclusive-analysis.md](references/inclusive-analysis.md) when the workbook is multilingual, uses unfamiliar conventions, contains personal data, or will inform decisions about people.
 6. Use cells, merged ranges, and chart references directly. Avoid OCR for structured cell values unless validating rendering or resolving an extraction gap.
 7. For each drawing object, use its anchor and `context.cells` to establish captions, identifiers, units, and nearby constraints.
-8. Read [vision-workflow.md](references/vision-workflow.md) before sending extracted media to any OCR or multimodal backend.
+8. Read [vision-workflow.md](references/vision-workflow.md) before analyzing extracted media with an offline local OCR or image-analysis backend.
 9. Join OCR or multimodal results back by image SHA-256 and object ID. Never join by filename alone.
 10. Report claims with source coordinates, evidence class, parser version, uncertainty, and review status. Avoid false precision in confidence scores.
 
@@ -33,9 +33,9 @@ Treat a workbook as a two-dimensional document scene, not a flat table. Preserve
 - Prefer cell values over visually repeated text when both describe the same field, but report conflicts rather than silently choosing a winner.
 - Treat merged headers as region context; do not duplicate their text into every cell without marking the derivation.
 - Treat charts by their source formulas when available. Use rendered chart vision only for visual annotations not encoded in chart XML.
-- Treat `IMAGE()` formulas as linked resources. Do not fetch URLs unless the user authorizes network access and the URL is safe.
+- Treat `IMAGE()` formulas as linked-resource metadata. Record the formula and URL without fetching it.
 - Treat hidden sheets, rows, and columns as content, not deletions.
-- Minimize context sent to any secondary tool. Do not send workbook media or cell context to a remote service without appropriate authorization and a sensitivity, policy, and jurisdiction check.
+- Keep workbook bytes, media, cell context, and derived artifacts local. If a required step needs network access or a hosted service, stop and report that the offline workflow cannot perform it.
 - Do not infer identity, demographic traits, disability, intent, competence, or protected characteristics from names, language, images, or formatting unless the task legitimately requires it and the evidence supports it.
 - Treat accessibility text, captions, and reading order as evidence while recognizing that they may be missing, stale, or incorrect.
 - Treat disagreement among tools or reviewers as unresolved evidence; do not use majority vote as a substitute for validation.
@@ -61,7 +61,7 @@ Produce:
 1. Workbook inventory and coverage gaps.
 2. Scene JSON and extracted media manifest.
 3. Object-to-context mapping.
-4. Optional OCR/Vision results keyed by image hash.
+4. Optional local OCR or image-analysis results keyed by image hash.
 5. Conflicts between cell data and image-derived statements.
 6. Evidence-linked findings with confidence and review status.
 7. Language, locale, accessibility, privacy, and tool-coverage limitations that could materially change interpretation.

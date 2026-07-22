@@ -1,20 +1,21 @@
-# OCR and vision workflow
+# Offline image-analysis workflow
 
-## Choose an authorized backend
+## Enforce local processing
 
-Before sending media or cell context to any secondary backend:
+Before processing media or cell context:
 
-1. Confirm authority to process the content and whether local, self-hosted, or remote processing is allowed.
-2. Review sensitivity, applicable policy and jurisdiction, retention, and image alt text or captions.
-3. Minimize the context and mask sensitive data when masking does not destroy the analysis target.
-4. Check language, script, writing direction, handwriting, and layout support.
-5. Record backend class, product or project and version when known, configuration or prompt version, image SHA-256, and timestamp.
+1. Use only software and models whose inference runs on the local machine without a network call.
+2. Disable telemetry, automatic uploads, cloud fallback, and remote model discovery when the selected local tool exposes those features.
+3. Review sensitivity, retention, and image alt text or captions.
+4. Minimize the context and mask sensitive data when masking does not destroy the analysis target.
+5. Check language, script, writing direction, handwriting, and layout support.
+6. Record backend name and version, local configuration, image SHA-256, and timestamp.
 
-Use an authorized local or self-hosted backend when remote processing is not allowed. If no suitable backend exists, record `NOT_ANALYZED` and the limitation.
+Do not upload data to a hosted API or remote service. If no capable offline backend exists, record `NOT_ANALYZED` and the limitation.
 
 ## Build the prompt packet
 
-Send the image together with bounded workbook context:
+Provide the local backend with the image and bounded workbook context:
 
 ```json
 {
@@ -40,7 +41,7 @@ Do not include the entire workbook when bounded nearby evidence is sufficient. P
 - Preserve reading order and language/script metadata when the backend provides them.
 - Compare image-derived numbers and units with nearby cells.
 - Flag disagreement instead of selecting a winner silently.
-- Do not treat agreement among multiple backends as proof when they may share training data or failure modes.
+- Do not treat agreement among multiple local backends as proof when they may share training data or failure modes.
 - Require an appropriately qualified review for low-resolution images, ambiguous edges, unsupported languages or layouts, or safety-relevant schematic claims.
 - Provide text alternatives for findings conveyed by color, icons, shape, or position.
 
