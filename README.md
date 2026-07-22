@@ -15,10 +15,14 @@ It extracts:
 ## Usage
 
 ```shell
-python -m complex_xlsx_parser spec.xlsx --pretty -o scene.json --extract-media extracted-media
+python -m complex_xlsx_parser spec.xlsx --pretty -o scene.json --extract-media extracted-media --redact-paths
 ```
 
 The parser performs no OCR and calls no remote service. OCR and multimodal interpretation belong in downstream adapters so sensitive workbooks can remain local.
+
+The bundled skill is backend-neutral. It preserves source language and coordinates, treats translations and normalized values as derived data, records uncertainty and coverage gaps, and includes guidance for right-to-left or vertical text, locale-specific values, accessibility metadata, and consequential-use review. Before sharing Scene JSON, review absolute paths, hidden content, comments, metadata, and nearby-cell context for sensitive information.
+
+Use `--redact-paths` for portable or shared output. Omit it only when protected local tooling requires absolute paths.
 
 ## Tests
 

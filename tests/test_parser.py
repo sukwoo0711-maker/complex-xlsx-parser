@@ -38,6 +38,15 @@ class ParserTests(unittest.TestCase):
         result = parse_workbook(FIXTURES / "markitdown_xlsx_complex_layout.xlsx")
         json.dumps(result, ensure_ascii=False)
 
+    def test_redacted_paths(self):
+        path = FIXTURES / "markitdown_xlsx_complex_layout.xlsx"
+        with tempfile.TemporaryDirectory() as tmp:
+            result = parse_workbook(path, extract_media=tmp, redact_paths=True)
+            self.assertEqual(result["source"]["path"], path.name)
+            self.assertTrue(result["source"]["path_redacted"])
+            for media in result["media"]:
+                self.assertEqual(Path(media["extracted_path"]).name, media["extracted_path"])
+
 
 if __name__ == "__main__":
     unittest.main()

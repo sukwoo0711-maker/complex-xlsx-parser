@@ -6,7 +6,7 @@
 |---|---|
 | `schema_version` | Contract version for downstream consumers |
 | `parser_version` | Parser implementation version |
-| `source` | Absolute path, byte size, and SHA-256 |
+| `source` | Source path or redacted filename, redaction flag, byte size, and SHA-256 |
 | `summary` | Counts of sheets, cells, merges, objects, and media |
 | `sheets` | Ordered worksheet scene records |
 | `media` | Deduplicated embedded image manifest |
@@ -56,3 +56,5 @@ source.sha256 + sheet.name + drawing_object.id + media.sha256
 ```
 
 This prevents collisions across workbook revisions and repeated filenames.
+
+Use `--redact-paths` when Scene JSON may be shared. It stores only filenames in `source.path` and media `extracted_path`; hashes and evidence joins remain unchanged.

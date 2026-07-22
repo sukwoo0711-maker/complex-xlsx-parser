@@ -303,7 +303,13 @@ def _parse_drawing(zf: ZipFile, part: str, by_ref: dict[str, dict], merges: list
     return objects
 
 
-def parse_workbook(path: str | Path, *, extract_media: str | Path | None = None, context_radius: int = 2) -> dict[str, Any]:
+def parse_workbook(
+    path: str | Path,
+    *,
+    extract_media: str | Path | None = None,
+    context_radius: int = 2,
+    redact_paths: bool = False,
+) -> dict[str, Any]:
     source = Path(path)
     if source.suffix.lower() not in {".xlsx", ".xlsm", ".xltx", ".xltm"}:
         raise ValueError("Expected an OOXML workbook (.xlsx, .xlsm, .xltx, or .xltm)")
@@ -374,7 +380,8 @@ def parse_workbook(path: str | Path, *, extract_media: str | Path | None = None,
             for part, media in all_media.items():
                 filename = f"{media['sha256'][:12]}-{Path(part).name}"
                 (destination / filename).write_bytes(zf.read(part))
-                media["extracted_path"] = str((destination / filename).resolve())
+                extracted = destination / filename
+                media["extracted_path"] = extracted.name if redact_paths else str(extracted.resolve())
 
         object_counts = {"image": 0, "chart": 0, "shape": 0, "unsupported-drawing-object": 0}
         for sheet in sheets:
@@ -387,9 +394,14 @@ def parse_workbook(path: str | Path, *, extract_media: str | Path | None = None,
         }
         return {
             "schema_version": "1.0",
-            "parser_version": "0.1.0",
+            "parser_version": "0.2.0",
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "source": {"path": str(source.resolve()), "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()},
+            "source": {
+                "path": source.name if redact_paths else str(source.resolve()),
+                "path_redacted": redact_paths,
+                "bytes": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+            },
             "summary": {
                 "sheets": len(sheets),
                 "cells": sum(len(s["cells"]) for s in sheets),

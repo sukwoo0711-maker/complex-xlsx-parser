@@ -15,6 +15,11 @@ def main() -> int:
     parser.add_argument("--output", "-o", type=Path)
     parser.add_argument("--extract-media", type=Path)
     parser.add_argument("--context-radius", type=int, default=2)
+    parser.add_argument(
+        "--redact-paths",
+        action="store_true",
+        help="Store filenames instead of absolute local paths in the scene model.",
+    )
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
 
@@ -23,6 +28,7 @@ def main() -> int:
             args.workbook,
             extract_media=args.extract_media,
             context_radius=max(0, args.context_radius),
+            redact_paths=args.redact_paths,
         )
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
